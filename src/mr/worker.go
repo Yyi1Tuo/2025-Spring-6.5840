@@ -47,7 +47,6 @@ func CallExample() {
 
 	// declare an argument structure.
 	args := ExampleArgs{}
-
 	// fill in the argument(s).
 	args.X = 99
 

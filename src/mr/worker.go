@@ -4,7 +4,7 @@ import "fmt"
 import "log"
 import "net/rpc"
 import "hash/fnv"
-
+import "os"
 
 //
 // Map functions return a slice of KeyValue.
@@ -99,4 +99,9 @@ func getTask() *Task{
 	} else {
 		fmt.Printf("call failed!\n")
 	}
+	return replys.Task
+}
+
+func doMapTask(Task *Task) {
+	
 }

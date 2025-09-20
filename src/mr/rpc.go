@@ -22,6 +22,13 @@ type ExampleReply struct {
 	Y int
 }
 
+type AllocateTaskArgs struct{
+
+}
+
+type AllocateTaskReply struct{
+	Task *Task
+}
 // Add your RPC definitions here.
 
 

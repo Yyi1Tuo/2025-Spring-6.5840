@@ -6,10 +6,13 @@ import "os"
 import "net/rpc"
 import "net/http"
 
+type Task struct{
+	Taskid int
+}
 
 type Coordinator struct {
 	// Your definitions here.
-	int nWorker
+	nWorker int
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -23,7 +26,10 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
 	return nil
 }
+func (c *Coordinator) AllocateTask(args *AllocateTaskArgs, reply *AllocateTaskReply) error{
 
+	return nil
+}
 
 //
 // start a thread that listens for RPCs from worker.go

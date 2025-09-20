@@ -88,3 +88,15 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	fmt.Println(err)
 	return false
 }
+
+func getTask() *Task{
+	args:=AllocateTaskArgs{}
+	replys:=AllocateTaskReply{}
+	ok:=call("Coordinator.AllocateTask",&args,&replys)
+	if ok {
+		// reply.Y should be 100.
+		fmt.Printf("reply.Y %v\n", reply.Y)
+	} else {
+		fmt.Printf("call failed!\n")
+	}
+}

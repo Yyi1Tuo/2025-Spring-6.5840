@@ -29,10 +29,10 @@ type AllocateTaskArgs struct {
 
 type AllocateTaskReply struct {
 	Task     *Task
-	lenfiles int
+	Lenfiles int
 }
 type ReportTaskDoneArgs struct {
-	Task *Task
+	Taskid int
 }
 type ReportTaskDoneReply struct {
 }

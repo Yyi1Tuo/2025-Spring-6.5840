@@ -85,7 +85,7 @@ func getTask() (*Task, int) {
 	} else {
 		fmt.Printf("call failed!\n")
 	}
-	return replys.Task, replys.lenfiles
+	return replys.Task, replys.Lenfiles
 }
 
 // 进行map任务
@@ -171,7 +171,7 @@ func doReduceTask(Task *Task, reducef func(string, []string) string, lenfiles in
 }
 
 func reportTaskDone(Task *Task) {
-	args := ReportTaskDoneArgs{Task: Task}
+	args := ReportTaskDoneArgs{Taskid: Task.Taskid}
 	replys := ReportTaskDoneReply{}
 	ok := call("Coordinator.MarkTaskDone", &args, &replys)
 	if ok {

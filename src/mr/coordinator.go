@@ -27,7 +27,7 @@ type Task struct {
 
 type Coordinator struct {
 	// Your definitions here.
-	TaskMapState map[*Task]int //监控任务的执行情况
+	TaskMapState map[int]int //监控任务的执行情况
 	TaskChan     chan *Task
 	lenfiles     int
 	Phase        int
@@ -48,14 +48,16 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 func (c *Coordinator) AllocateTask(args *AllocateTaskArgs, reply *AllocateTaskReply) error {
 	task := <-c.TaskChan
 	reply.Task = task
-	reply.lenfiles = c.lenfiles
+	reply.Lenfiles = c.lenfiles
 	return nil
 }
 func (c *Coordinator) MarkTaskDone(args *ReportTaskDoneArgs, reply *ReportTaskDoneReply) error {
 	TaskLock.Lock()
 	defer TaskLock.Unlock()
-	c.TaskMapState[args.Task] = DoneTask
-	fmt.Println("MarkTaskDone", args.Task.Taskid)
+	//由于rpc的gob会重新创建对象，所以不能直接传指针
+
+	c.TaskMapState[args.Taskid] = DoneTask
+	fmt.Println("MarkTaskDone", args.Taskid, c.TaskMapState[args.Taskid])
 	return nil
 }
 
@@ -88,7 +90,7 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
-		TaskMapState: make(map[*Task]int),
+		TaskMapState: make(map[int]int),
 		TaskChan:     make(chan *Task, len(files)),
 		lenfiles:     len(files),
 		Phase:        MapPhase,
@@ -97,7 +99,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	// Your code here.
 	for i, v := range files {
 		task := c.MakeMapTask(v, i, nReduce)
-		c.TaskMapState[task] = MapPhase
+		c.TaskMapState[task.Taskid] = MapPhase
 		c.TaskChan <- task
 	}
 
@@ -109,9 +111,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		for {
 			flag := true
 			TaskLock.Lock()
-			for task, state := range c.TaskMapState {
+			for taskid, state := range c.TaskMapState {
 				if state == MapPhase {
-					fmt.Println("Map阶段未结束", task)
+					fmt.Println("Map阶段未结束", taskid, state)
 					flag = false
 					break
 				}
@@ -133,7 +135,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	fmt.Println("进入Reduce阶段")
 	for i := 0; i < nReduce; i++ {
 		task := c.MakeReduceTask(i, nReduce)
-		c.TaskMapState[task] = ReducePhase
+		c.TaskMapState[task.Taskid] = ReducePhase
 		c.TaskChan <- task
 	}
 	return &c

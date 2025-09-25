@@ -81,7 +81,7 @@ func getTask() (*Task, int) {
 	replys := AllocateTaskReply{}
 	ok := call("Coordinator.AllocateTask", &args, &replys)
 	if ok {
-		fmt.Printf("Get a %v Task %v\n", replys.Task.TaskType, replys.Task.Taskid)
+		//fmt.Printf("Get a %v Task %v\n", replys.Task.TaskType, replys.Task.Taskid)
 	} else {
 		fmt.Printf("call failed!\n")
 	}
@@ -168,15 +168,14 @@ func doReduceTask(Task *Task, reducef func(string, []string) string, lenfiles in
 	}
 
 	ofile.Close()
+	reportTaskDone(Task)
 }
 
 func reportTaskDone(Task *Task) {
 	args := ReportTaskDoneArgs{Taskid: Task.Taskid}
 	replys := ReportTaskDoneReply{}
 	ok := call("Coordinator.MarkTaskDone", &args, &replys)
-	if ok {
-		fmt.Printf("Report Task Done %v\n", Task.Taskid)
-	} else {
+	if !ok {
 		fmt.Printf("Report Task Done failed!\n")
 	}
 }

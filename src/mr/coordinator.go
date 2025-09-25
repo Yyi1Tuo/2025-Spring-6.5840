@@ -1,7 +1,6 @@
 package mr
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -34,6 +33,7 @@ type Coordinator struct {
 }
 
 var TaskLock sync.Mutex
+var PhaseLock sync.Mutex
 
 // Your code here -- RPC handlers for the worker to call.
 
@@ -57,7 +57,7 @@ func (c *Coordinator) MarkTaskDone(args *ReportTaskDoneArgs, reply *ReportTaskDo
 	//由于rpc的gob会重新创建对象，所以不能直接传指针
 
 	c.TaskMapState[args.Taskid] = DoneTask
-	fmt.Println("MarkTaskDone", args.Taskid, c.TaskMapState[args.Taskid])
+	//fmt.Println("MarkTaskDone", args.Taskid, c.TaskMapState[args.Taskid])
 	return nil
 }
 
@@ -81,6 +81,9 @@ func (c *Coordinator) Done() bool {
 	ret := false
 
 	// Your code here.
+	PhaseLock.Lock()
+	defer PhaseLock.Unlock()
+	ret = c.Phase == DoneTask
 
 	return ret
 }
@@ -111,9 +114,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		for {
 			flag := true
 			TaskLock.Lock()
-			for taskid, state := range c.TaskMapState {
+			for _, state := range c.TaskMapState {
 				if state == MapPhase {
-					fmt.Println("Map阶段未结束", taskid, state)
+					//fmt.Println("Map阶段未结束", taskid, state)
 					flag = false
 					break
 				}
@@ -131,13 +134,44 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	wg.Wait()
 
 	//进入Reduce阶段
+	PhaseLock.Lock()
 	c.Phase = ReducePhase
-	fmt.Println("进入Reduce阶段")
+	PhaseLock.Unlock()
+	//fmt.Println("进入Reduce阶段")
 	for i := 0; i < nReduce; i++ {
 		task := c.MakeReduceTask(i, nReduce)
 		c.TaskMapState[task.Taskid] = ReducePhase
 		c.TaskChan <- task
 	}
+
+	//判断reduce是否结束
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			flag := true
+			TaskLock.Lock()
+			for _, state := range c.TaskMapState {
+				if state == ReducePhase {
+					//fmt.Println("Reduce阶段未结束", taskid, state)
+					flag = false
+					break
+				}
+			}
+			TaskLock.Unlock()
+			if flag {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+
+	}()
+	wg.Wait()
+
+	//任务完成退出master
+	PhaseLock.Lock()
+	c.Phase = DoneTask
+	PhaseLock.Unlock()
 	return &c
 }
 

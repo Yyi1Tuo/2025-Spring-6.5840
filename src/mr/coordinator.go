@@ -1,39 +1,65 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
+import (
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+	"sync"
+	"time"
+)
 
-type Task struct{
-	Taskid int
+const (
+	WaitingTask = 0
+	MapPhase    = 1
+	ReducePhase = 2
+	DoneTask    = 3
+)
+
+type Task struct {
+	Taskid    int
+	Filename  string
+	TaskType  int
+	ReduceNum int
 }
 
 type Coordinator struct {
 	// Your definitions here.
-	nWorker int
+	TaskMapState map[*Task]int //监控任务的执行情况
+	TaskChan     chan *Task
+	lenfiles     int
+	Phase        int
 }
+
+var TaskLock sync.Mutex
 
 // Your code here -- RPC handlers for the worker to call.
 
-//
 // an example RPC handler.
 //
 // the RPC argument and reply types are defined in rpc.go.
-//
 func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
 	return nil
 }
-func (c *Coordinator) AllocateTask(args *AllocateTaskArgs, reply *AllocateTaskReply) error{
 
+func (c *Coordinator) AllocateTask(args *AllocateTaskArgs, reply *AllocateTaskReply) error {
+	task := <-c.TaskChan
+	reply.Task = task
+	reply.lenfiles = c.lenfiles
+	return nil
+}
+func (c *Coordinator) MarkTaskDone(args *ReportTaskDoneArgs, reply *ReportTaskDoneReply) error {
+	TaskLock.Lock()
+	defer TaskLock.Unlock()
+	c.TaskMapState[args.Task] = DoneTask
+	fmt.Println("MarkTaskDone", args.Task.Taskid)
 	return nil
 }
 
-//
 // start a thread that listens for RPCs from worker.go
-//
 func (c *Coordinator) server() {
 	rpc.Register(c)
 	rpc.HandleHTTP()
@@ -47,30 +73,87 @@ func (c *Coordinator) server() {
 	go http.Serve(l, nil)
 }
 
-//
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
-//
 func (c *Coordinator) Done() bool {
 	ret := false
 
 	// Your code here.
 
-
 	return ret
 }
 
-//
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
 // nReduce is the number of reduce tasks to use.
-//
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{}
-
-	// Your code here.
-
-
+	c := Coordinator{
+		TaskMapState: make(map[*Task]int),
+		TaskChan:     make(chan *Task, len(files)),
+		lenfiles:     len(files),
+		Phase:        MapPhase,
+	}
 	c.server()
+	// Your code here.
+	for i, v := range files {
+		task := c.MakeMapTask(v, i, nReduce)
+		c.TaskMapState[task] = MapPhase
+		c.TaskChan <- task
+	}
+
+	//需要某种机制来转换阶段，即从map->reduce
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			flag := true
+			TaskLock.Lock()
+			for task, state := range c.TaskMapState {
+				if state == MapPhase {
+					fmt.Println("Map阶段未结束", task)
+					flag = false
+					break
+				}
+			}
+			TaskLock.Unlock()
+			if flag {
+				//Map阶段结束了
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+
+	}()
+
+	wg.Wait()
+
+	//进入Reduce阶段
+	c.Phase = ReducePhase
+	fmt.Println("进入Reduce阶段")
+	for i := 0; i < nReduce; i++ {
+		task := c.MakeReduceTask(i, nReduce)
+		c.TaskMapState[task] = ReducePhase
+		c.TaskChan <- task
+	}
 	return &c
+}
+
+func (c *Coordinator) MakeMapTask(s string, i int, nReduce int) *Task {
+	task := &Task{
+		Taskid:    i,
+		Filename:  s,
+		TaskType:  MapPhase,
+		ReduceNum: nReduce,
+	}
+	return task
+}
+func (c *Coordinator) MakeReduceTask(i int, nReduce int) *Task {
+	task := &Task{
+		Taskid:    i,
+		TaskType:  ReducePhase,
+		ReduceNum: nReduce,
+		Filename:  "",
+	}
+	return task
 }

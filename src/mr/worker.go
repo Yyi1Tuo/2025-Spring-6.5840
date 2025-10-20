@@ -49,8 +49,10 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 		case WaitingTask:
 			time.Sleep(1 * time.Second)
 		case DoneTask:
-			//
+			//fmt.Println("[DEBUG]Worker退出")
+			return
 		}
+		time.Sleep(1 * time.Second)
 	}
 
 }
@@ -81,9 +83,10 @@ func getTask() (*Task, int) {
 	replys := AllocateTaskReply{}
 	ok := call("Coordinator.AllocateTask", &args, &replys)
 	if ok {
-		//fmt.Printf("Get a %v Task %v\n", replys.Task.TaskType, replys.Task.Taskid)
+		//fmt.Println("[DEBUG]GET TASK:", replys.Task.TaskType, replys.Task.Taskid)
 	} else {
-		fmt.Printf("call failed!\n")
+		//假设没任务了
+		return &Task{TaskType: DoneTask}, 0
 	}
 	return replys.Task, replys.Lenfiles
 }

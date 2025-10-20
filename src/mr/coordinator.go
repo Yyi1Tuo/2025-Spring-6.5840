@@ -49,6 +49,7 @@ func (c *Coordinator) AllocateTask(args *AllocateTaskArgs, reply *AllocateTaskRe
 	task := <-c.TaskChan
 	reply.Task = task
 	reply.Lenfiles = c.lenfiles
+	//fmt.Println("[DEBUG]ALLOCATE TASK:", task.TaskType, task.Taskid)
 	return nil
 }
 func (c *Coordinator) MarkTaskDone(args *ReportTaskDoneArgs, reply *ReportTaskDoneReply) error {

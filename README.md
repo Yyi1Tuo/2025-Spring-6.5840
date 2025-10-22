@@ -111,3 +111,12 @@ gob 在解码的时候会 **新建一个 `Task` 对象**，然后返回它的指
 > "A typical use is transporting arguments and results of remote procedure calls (RPCs) such as those provided by net/rpc."
 
 修改的方法有二，一是修改数据结构，key改为taskid，但这样任务完成后可能需要删除，以防和后面的reducetask冲突；二是根据taskid，回头找到master的原地址信息进行修改。
+
+
+
+### 容错机制的设计
+
+基本的思路如下：coordinator不停发送heartbeat，并维护一个map记录收到回复的时间，隔一段时间检查这个map，如果迟迟没有回复则认为worker已宕机，需要重新部署任务。
+
+> 由于在此lab中，worker完成一次任务的时间并不长，我们甚至不用让worker一直发送heartbeat，只需记录任务起始时间，超时则任务宕机。
+

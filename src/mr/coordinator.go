@@ -50,20 +50,28 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) AllocateTask(args *AllocateTaskArgs, reply *AllocateTaskReply) error {
-	//这里需要设置一个超时器，如果暂时没有任务，返回waiting
-	select {
-	case task := <-c.TaskChan:
-		HeartbeatLock.Lock()
-		c.TaskAliveDetector[task.Taskid] = time.Now()
-		defer HeartbeatLock.Unlock()
-		reply.Task = task
-		reply.Lenfiles = c.lenfiles
-		return nil
-	case <-time.After(1500 * time.Millisecond):
-		reply.Task = &Task{TaskType: WaitingTask}
-		reply.Lenfiles = 0
-		return nil
-	}
+    //这里需要设置一个超时器，如果暂时没有任务，返回waiting；如果阶段已完成，返回done
+    select {
+    case task := <-c.TaskChan:
+        HeartbeatLock.Lock()
+        c.TaskAliveDetector[task.Taskid] = time.Now()
+        HeartbeatLock.Unlock()
+        reply.Task = task
+        reply.Lenfiles = c.lenfiles
+        return nil
+    case <-time.After(1500 * time.Millisecond):
+        PhaseLock.Lock()
+        phase := c.Phase
+        PhaseLock.Unlock()
+        if phase == DoneTask {
+            reply.Task = &Task{TaskType: DoneTask}
+            reply.Lenfiles = c.lenfiles
+        } else {
+            reply.Task = &Task{TaskType: WaitingTask}
+            reply.Lenfiles = c.lenfiles
+        }
+        return nil
+    }
 }
 func (c *Coordinator) MarkTaskDone(args *ReportTaskDoneArgs, reply *ReportTaskDoneReply) error {
 	TaskLock.Lock()

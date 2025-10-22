@@ -40,6 +40,7 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 
 	// Your worker implementation here.
 	for {
+		//fmt.Println("[DEBUG]Worker: Main Loop At", time.Now().Format("2006-01-02 15:04:05"))
 		task, lenfiles := getTask()
 		switch task.TaskType {
 		case MapPhase:
@@ -81,6 +82,7 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 func getTask() (*Task, int) {
 	args := AllocateTaskArgs{}
 	replys := AllocateTaskReply{}
+	//fmt.Println("[DEBUG]Worker: Get Task At", time.Now().Format("2006-01-02 15:04:05"))
 	ok := call("Coordinator.AllocateTask", &args, &replys)
 	if ok {
 		//fmt.Println("[DEBUG]GET TASK:", replys.Task.TaskType, replys.Task.Taskid)
@@ -177,6 +179,7 @@ func doReduceTask(Task *Task, reducef func(string, []string) string, lenfiles in
 func reportTaskDone(Task *Task) {
 	args := ReportTaskDoneArgs{Taskid: Task.Taskid}
 	replys := ReportTaskDoneReply{}
+	//fmt.Println("[DEBUG]Worker: Report Task Done:", Task.Taskid)
 	ok := call("Coordinator.MarkTaskDone", &args, &replys)
 	if !ok {
 		fmt.Printf("Report Task Done failed!\n")

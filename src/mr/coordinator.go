@@ -59,7 +59,14 @@ func (c *Coordinator) AllocateTask(args *AllocateTaskArgs, reply *AllocateTaskRe
 		reply.Task = task
 		reply.Lenfiles = c.lenfiles
 		return nil
-	case <-time.After(1500 * time.Millisecond):
+	case <-time.After(800 * time.Millisecond):
+		PhaseLock.Lock()
+		defer PhaseLock.Unlock()
+		if c.Phase == DoneTask {
+			reply.Task = &Task{TaskType: DoneTask}
+			reply.Lenfiles = 0
+			return nil
+		}
 		reply.Task = &Task{TaskType: WaitingTask}
 		reply.Lenfiles = 0
 		return nil
@@ -148,7 +155,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 				//Map阶段结束了
 				break
 			}
-			time.Sleep(1 * time.Second)
+			time.Sleep(100 * time.Millisecond)
 		}
 
 	}()
@@ -159,13 +166,14 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	PhaseLock.Lock()
 	c.Phase = ReducePhase
 	PhaseLock.Unlock()
+	TaskLock.Lock()
 	for i := 0; i < nReduce; i++ {
 		task := c.MakeReduceTask(i, nReduce)
 		c.TaskMapState[task.Taskid] = ReducePhase
 		c.Tasks[task.Taskid] = task
 		c.TaskChan <- task
 	}
-
+	TaskLock.Unlock()
 	//判断reduce是否结束
 	wg.Add(1)
 	go func() {
@@ -184,7 +192,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 			if flag {
 				break
 			}
-			time.Sleep(1 * time.Second)
+			time.Sleep(100 * time.Millisecond)
 		}
 
 	}()
@@ -195,7 +203,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.Phase = DoneTask
 	PhaseLock.Unlock()
 	//fmt.Println("[DEBUG]Coordinator退出", time.Now().Format("2006-01-02 15:04:05"))
-	time.Sleep(3 * time.Second) //等待worker退出，防止出现dialing error
+	time.Sleep(5 * time.Second) //等待worker退出，防止出现dialing error
 	return &c
 }
 

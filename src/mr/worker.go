@@ -48,12 +48,12 @@ func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string)
 		case ReducePhase:
 			doReduceTask(task, reducef, lenfiles)
 		case WaitingTask:
-			time.Sleep(1 * time.Second)
+			time.Sleep(500 * time.Millisecond)
 		case DoneTask:
 			//fmt.Println("[DEBUG]Worker退出")
 			return
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(200 * time.Millisecond)
 	}
 
 }

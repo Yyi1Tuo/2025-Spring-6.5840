@@ -120,3 +120,9 @@ gob 在解码的时候会 **新建一个 `Task` 对象**，然后返回它的指
 
 > 由于在此lab中，worker完成一次任务的时间并不长，我们甚至不用让worker一直发送heartbeat，只需记录任务起始时间，超时则任务宕机。
 
+
+
+### Worker的退出
+
+还有一个比较难处理的细节是，如何通知worker退出，或者收worker如何才能判断master的退出无用的dialing。虽然说不影响结果的正确性但是看着满屏幕的connection fail实在使人心烦。
+

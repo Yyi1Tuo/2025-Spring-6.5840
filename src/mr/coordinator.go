@@ -120,7 +120,7 @@ func (c *Coordinator) Done() bool {
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
 		TaskMapState:      make(map[int]int),
-		TaskChan:          make(chan *Task, len(files)),
+		TaskChan:          make(chan *Task, 2*len(files)),
 		TaskAliveDetector: make(map[int]time.Time),
 		Tasks:             make(map[int]*Task),
 		lenfiles:          len(files),
@@ -202,8 +202,18 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	PhaseLock.Lock()
 	c.Phase = DoneTask
 	PhaseLock.Unlock()
-	//fmt.Println("[DEBUG]Coordinator退出", time.Now().Format("2006-01-02 15:04:05"))
-	time.Sleep(5 * time.Second) //等待worker退出，防止出现dialing error
+	//发布Please Exit任务，防止出现dialing error或者Unexpected EOF
+	for i := 0; i < nReduce; i++ { //当然实际上加入worker的数量大于reduce数量时，这种写法还是会有问题，
+		// 但是如果我们从mapreduce的设计出发，worker的数量应该大于reduce数量，否则reduce阶段无法进行，所以这里可以认为是没有问题的
+		exittask := &Task{
+			Taskid:    i,
+			TaskType:  DoneTask,
+			Filename:  "",
+			ReduceNum: nReduce,
+		}
+		c.TaskChan <- exittask
+	}
+	time.Sleep(3 * time.Second)
 	return &c
 }
 

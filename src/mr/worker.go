@@ -114,18 +114,23 @@ func doMapTask(Task *Task, mapf func(string, string) []KeyValue) {
 	}
 	for i := 0; i < Task.ReduceNum; i++ {
 		outputFilename := "mr-" + strconv.Itoa(Task.Taskid) + "-" + strconv.Itoa(i)
-		ofile, err := os.Create(outputFilename)
+		tmpFile, err := os.CreateTemp(".", "mr-tmp-")
 		if err != nil {
-			log.Fatalf("cannot create %v", outputFilename)
+			log.Fatalf("cannot create temp file for %v", outputFilename)
 		}
-		enc := json.NewEncoder(ofile)
+		enc := json.NewEncoder(tmpFile)
 		for _, kv := range HashKeyID[i] {
 			err := enc.Encode(kv)
 			if err != nil {
 				log.Fatalf("cannot encode %v", kv)
 			}
 		}
-		ofile.Close()
+		if err := tmpFile.Close(); err != nil {
+			log.Fatalf("close temp file failed for %v", outputFilename)
+		}
+		if err := os.Rename(tmpFile.Name(), outputFilename); err != nil {
+			log.Fatalf("rename temp to %v failed", outputFilename)
+		}
 	}
 	reportTaskDone(Task)
 }
@@ -152,7 +157,10 @@ func doReduceTask(Task *Task, reducef func(string, []string) string, lenfiles in
 
 	//调用reducef函数
 	outputFilename := "mr-out-" + strconv.Itoa(Task.Taskid)
-	ofile, _ := os.Create(outputFilename)
+	tmpFile, err := os.CreateTemp(".", "mr-out-tmp-")
+	if err != nil {
+		log.Fatalf("cannot create temp reduce file for %v", outputFilename)
+	}
 
 	i := 0
 	for i < len(intermediate) {
@@ -167,12 +175,17 @@ func doReduceTask(Task *Task, reducef func(string, []string) string, lenfiles in
 		output := reducef(intermediate[i].Key, values)
 
 		// this is the correct format for each line of Reduce output.
-		fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+		fmt.Fprintf(tmpFile, "%v %v\n", intermediate[i].Key, output)
 
 		i = j
 	}
 
-	ofile.Close()
+	if err := tmpFile.Close(); err != nil {
+		log.Fatalf("close temp reduce file failed for %v", outputFilename)
+	}
+	if err := os.Rename(tmpFile.Name(), outputFilename); err != nil {
+		log.Fatalf("rename reduce temp to %v failed", outputFilename)
+	}
 	reportTaskDone(Task)
 }
 

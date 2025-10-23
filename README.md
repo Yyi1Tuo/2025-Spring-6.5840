@@ -126,6 +126,24 @@ gob 在解码的时候会 **新建一个 `Task` 对象**，然后返回它的指
 
 还有一个比较难处理的细节是，如何通知worker退出，或者收worker如何才能判断master的退出无用的dialing。虽然说不影响结果的正确性但是看着满屏幕的connection fail实在使人心烦。
 
+我们可以在master退出前，发布一组伪任务用于告知worker退出
+
+```go
+//发布Please Exit任务，防止出现dialing error或者Unexpected EOF
+for i := 0; i < nReduce; i++ { //当然实际上加入worker的数量大于reduce数量时，这种写法还是会有问题，
+// 但是如果我们从mapreduce的设计出发，worker的数量应该大于reduce数量，否则reduce阶段无法进行，所以这里可以认为是没有问题的
+		exittask := &Task{
+			Taskid:    i,
+			TaskType:  DoneTask,
+			Filename:  "",
+			ReduceNum: nReduce,
+		}
+		c.TaskChan <- exittask
+	}
+	time.Sleep(3 * time.Second)
+	return &c
+```
+
 #### 分布式中文件操作的Trick
 
 假设一个线程需要写入一个文件，为了防止其崩溃导致一个不可用的中间文件被其他线程误读，我们可以使用临时文件+重命名的方法，在大部分的UNIX文件系统中`os.Rename(old, new)` 都是**原子操作**，这也就保证不会出现错误的文件被读取。

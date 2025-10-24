@@ -1,11 +1,12 @@
 package kvsrv
 
 import (
-	"6.5840/kvsrv1/rpc"
-	"6.5840/kvtest1"
-	"6.5840/tester1"
-)
+	"time"
 
+	"6.5840/kvsrv1/rpc"
+	kvtest "6.5840/kvtest1"
+	tester "6.5840/tester1"
+)
 
 type Clerk struct {
 	clnt   *tester.Clnt
@@ -30,7 +31,22 @@ func MakeClerk(clnt *tester.Clnt, server string) kvtest.IKVClerk {
 // arguments. Additionally, reply must be passed as a pointer.
 func (ck *Clerk) Get(key string) (string, rpc.Tversion, rpc.Err) {
 	// You will have to modify this function.
-	return "", 0, rpc.ErrNoKey
+	args := rpc.GetArgs{Key: key}
+	reply := rpc.GetReply{}
+
+	//ok是一个bool值，反映的是connection是否成功
+	//只有ok为true，reply才有意义
+	for !ck.clnt.Call(ck.server, "KVServer.Get", &args, &reply) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	DPrintf("[DEBUG]Client Get Reply : %+v", reply)
+	//还有一个问题是Get操作需不需要考虑version？
+	//在一个linearizable语意的 KV Server中，有一个明确的时间线，所以Get操作一定是当前时刻的最新值
+	//也就是说，Get操作不需要考虑version，不会影响Get操作的正确性，只需要记录下version，返回给上层逻辑即可。
+	if reply.Err == rpc.ErrNoKey {
+		return "", 0, rpc.ErrNoKey
+	}
+	return reply.Value, reply.Version, reply.Err
 }
 
 // Put updates key with value only if the version in the
@@ -52,5 +68,11 @@ func (ck *Clerk) Get(key string) (string, rpc.Tversion, rpc.Err) {
 // arguments. Additionally, reply must be passed as a pointer.
 func (ck *Clerk) Put(key, value string, version rpc.Tversion) rpc.Err {
 	// You will have to modify this function.
+	args := rpc.PutArgs{}
+	reply := rpc.PutReply{}
+	for !ck.clnt.Call(ck.server, "KVServer.Put", &args, &reply) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	DPrintf("[DEBUG]Client Put Reply : %+v", reply)
 	return rpc.ErrNoKey
 }

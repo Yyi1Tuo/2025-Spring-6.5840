@@ -68,11 +68,26 @@ func (ck *Clerk) Get(key string) (string, rpc.Tversion, rpc.Err) {
 // arguments. Additionally, reply must be passed as a pointer.
 func (ck *Clerk) Put(key, value string, version rpc.Tversion) rpc.Err {
 	// You will have to modify this function.
-	args := rpc.PutArgs{}
-	reply := rpc.PutReply{}
-	for !ck.clnt.Call(ck.server, "KVServer.Put", &args, &reply) {
+	args := rpc.PutArgs{Key: key, Value: value, Version: version}
+
+	firstAttempt := true
+	for {
+		reply := rpc.PutReply{} //每次循环都要重新初始化reply，否则会产生复用的情况，导致gob不会把值覆盖掉
+		ok := ck.clnt.Call(ck.server, "KVServer.Put", &args, &reply)
+		if ok {
+			DPrintf("[DEBUG]Client Put Reply : %+v", reply)
+			if reply.Err == rpc.OK {
+				return rpc.OK
+			} else if reply.Err == rpc.ErrVersion {
+				if firstAttempt {
+					return rpc.ErrVersion
+				} else {
+					return rpc.ErrMaybe
+				}
+			}
+			return reply.Err
+		}
+		firstAttempt = false
 		time.Sleep(100 * time.Millisecond)
 	}
-	DPrintf("[DEBUG]Client Put Reply : %+v", reply)
-	return rpc.ErrNoKey
 }

@@ -166,3 +166,62 @@ lab2代码中的注释强调应该为每一个KV对设置一个version号，有�
 与此同时，这种server的线性一致性对于使用来说完全没有必要，我们只需要保证对每一个KV对来说，所有用户的读写操作具有一致性即可，并且对每一对KV对设置一个uint64的版本号消耗的内存并没有想象中的大。
 
 #### 利用KV Server实现Lock
+
+我们利用KV对来模拟一个lock，用key存储lockname，value存储持有者。
+由于我们实现的KV Server是不可靠传输，所以在使用时要根据返回的ErrType自行处理以保证可靠的互斥锁。
+
+```go
+func (lk *Lock) Acquire() {
+	// Your code here
+	for {
+		//使用get来获取锁的状态
+		locker, ver, err := lk.ck.Get(lk.lockName)
+		if err == rpc.ErrNoKey {
+			//没有锁，直接创建锁
+			lockErr := lk.ck.Put(lk.lockName, lk.clientID, 0)
+			//我们需要判断是不是真的锁上了
+			switch lockErr {
+			case rpc.OK:
+				return
+			case rpc.ErrVersion:
+				//版本不匹配，可能是别人持有锁，可能是先前的请求已经送到，由于网络故障没有收到回复
+				//我们选择重试
+			case rpc.ErrMaybe:
+				//不确定,需要检查是不是真的锁上了
+				locker, _, _ := lk.ck.Get(lk.lockName)
+				if locker == lk.clientID {
+					return
+				}
+				//说明put没生效,重试
+			default:
+			}
+
+		} else {
+			//锁存在
+			switch locker {
+			case lk.clientID: //已经是自己持有锁
+				return
+			case "": //没有持有者，直接持有锁
+				lockErr := lk.ck.Put(lk.lockName, lk.clientID, ver)
+				switch lockErr {
+				case rpc.OK:
+					return
+				case rpc.ErrVersion:
+				case rpc.ErrMaybe:
+					locker, _, _ := lk.ck.Get(lk.lockName)
+					if locker == lk.clientID {
+						return
+					}
+				default:
+				}
+			default:
+				// 其它持有者，稍后重试
+			}
+		}
+		//防止livelock，需要一个随机退避
+		time.Sleep(time.Duration(nrand()%100+50) * time.Millisecond)
+	}
+
+}
+```
+

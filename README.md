@@ -264,9 +264,22 @@ type Timer struct {
 }
 ```
 
-当定时器超时，它往通道 `C` 里塞一个信号。如果你没把这个信号读出来，那信号就**一直留在通道里**。如果你此时调用 `Reset()`，它只是**重新设置时间**，但不会自动清空那个旧信号。这就会导致即使server收到心跳reset定时器，可能还是会触发旧的超时信号导致重新选举。
+当定时器超时，它往通道 `C` 里塞一个信号。如果你没把这个信号读出来，那信号就**一直留在通道里**。如果你此时调用 `Reset()`，它只是**重新设置时间**，但不会自动清空那个旧信号。这就会导致即使server收到心跳reset定时器，可能还是会触发旧的超时信号导致重新选举。我们应该使用如下安全的reset：
 
-在助教的建议里也明确说了：
+```go
+func resetTimer(timer *time.Timer, d time.Duration) {
+	//安全的清理过期信号
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(d)
+}
+```
+
+事实上，在助教的建议里也明确说了：
 
 > Don't use time.Ticker and time.Timer; they are tricky to use correctly.
 
@@ -327,4 +340,23 @@ rf.mu.Unlock()
 这种写法的问题在于`args.Term` **并不一定等于** 外层代码变成 Candidate 时的 `rf.currentTerm`。 从 goroutine 创建到它实际读取 `rf.currentTerm` 之间可能过了很久，期间任期可能变了、节点状态可能已经不是 Candidate 了。
 
 另一点是不要在有可能阻塞的代码块外部使用锁，很大概率会导致死锁，这点大家应该都知道。
+
+##### 关于kill( )
+
+由于每个测试都会新建一批 Raft 实例，旧的会被 Kill 并断网清理，但日志是全局输出且 Kill 不是同步“立刻终止”，所以可能出现少量旧实例的尾部日志与新测试日志交错的情况，导致出现一些令人困惑的输出。比如下面这段输出：
+
+```lua
+Test (3A): election after network failure (reliable network)...
+2025/10/29 18:48:06 Server 0 Election Timeout, start election
+2025/10/29 18:48:06 0 startElection2
+2025/10/29 18:48:07 Server 1 Election Timeout, start election
+2025/10/29 18:48:07 1 startElection2
+2025/10/29 18:48:07 Server 1 Election Timeout, start election
+2025/10/29 18:48:07 1 startElection1
+2025/10/29 18:48:07 Server 2 receive RequestVote from 1, Term: 1
+2025/10/29 18:48:07 Server 2 vote for 1, Term: 1
+2025/10/29 18:48:07 Server 0 receive RequestVote from 1, Term: 1
+2025/10/29 18:48:07 Server 0 vote for 1, Term: 1
+2025/10/29 18:48:07 Server 1 becomeLeader, Term: 1
+```
 

@@ -174,7 +174,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			reply.VoteGranted = true
 			rf.voteFor = args.CandidateId
 			DPrintf("Server %d vote for %d, Term: %d", rf.me, args.CandidateId, rf.currTerm)
-			rf.electionTimer.Reset(getRandomElectionTimeout())
+			resetTimer(rf.electionTimer, getRandomElectionTimeout())
 			return
 		}
 	}
@@ -199,6 +199,15 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 		} else if rf.state == Candidate {
 			DPrintf("Server %d cannot get enough votes, Term: %d, VoteCount: %d", rf.me, rf.currTerm, rf.voteCount)
 		}
+	} else {
+		if reply.Term > rf.currTerm {
+			rf.currTerm = reply.Term
+			rf.state = Follower
+			rf.voteCount = 0
+			rf.voteFor = -1
+			resetTimer(rf.electionTimer, getRandomElectionTimeout())
+		}
+		return true
 	}
 	return true
 }
@@ -215,7 +224,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 			rf.state = Follower
 			rf.voteCount = 0
 			rf.voteFor = -1
-			rf.electionTimer.Reset(getRandomElectionTimeout())
+			resetTimer(rf.electionTimer, getRandomElectionTimeout())
 		}
 	}
 }
@@ -239,7 +248,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.state = Follower
 		rf.voteCount = 0
 		//TODO:这里应当考虑是否需要重置超时器，在3A中可以认为直接更新
-		rf.electionTimer.Reset(getRandomElectionTimeout())
+		resetTimer(rf.electionTimer, getRandomElectionTimeout())
 		reply.Term = rf.currTerm
 		reply.Success = true
 		return
@@ -297,14 +306,14 @@ func (rf *Raft) ticker() {
 			if rf.state != Leader {
 				DPrintf("Server %d Election Timeout, start election", rf.me)
 				rf.startElection()
-				rf.electionTimer.Reset(getRandomElectionTimeout())
+				resetTimer(rf.electionTimer, getRandomElectionTimeout())
 			}
 			rf.mu.Unlock()
 		case <-rf.heartbeatTimer.C:
 			rf.mu.Lock()
 			if rf.state == Leader {
 				rf.broadcastHeartbeat()
-				rf.heartbeatTimer.Reset(100 * time.Millisecond)
+				resetTimer(rf.heartbeatTimer, 100*time.Millisecond)
 			}
 			rf.mu.Unlock()
 		}
@@ -318,7 +327,7 @@ func (rf *Raft) startElection() {
 	rf.voteFor = rf.me
 	rf.voteCount = 1
 	rf.state = Candidate
-	rf.electionTimer.Reset(getRandomElectionTimeout())
+	resetTimer(rf.electionTimer, getRandomElectionTimeout())
 	DPrintf("%d startElection%d", rf.me, rf.currTerm)
 
 	for i := range rf.peers {
@@ -347,7 +356,7 @@ func (rf *Raft) becomeLeader() {
 	rf.voteCount = 0
 	rf.voteFor = -1
 	go rf.broadcastHeartbeat()
-	rf.heartbeatTimer.Reset(100 * time.Millisecond)
+	resetTimer(rf.heartbeatTimer, 100*time.Millisecond)
 }
 
 // the service or tester wants to create a Raft server. the ports
@@ -386,4 +395,14 @@ func Make(peers []*labrpc.ClientEnd, me int,
 }
 func getRandomElectionTimeout() time.Duration {
 	return time.Duration(250+rand.Int63()%250) * time.Millisecond
+}
+func resetTimer(timer *time.Timer, d time.Duration) {
+	//安全的清理过期信号
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(d)
 }

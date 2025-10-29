@@ -188,6 +188,17 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	defer rf.mu.Unlock()
 	if reply.VoteGranted {
 		rf.voteCount++
+		if rf.state == Follower {
+			return true
+		}
+		if rf.state == Candidate && rf.voteCount > len(rf.peers)/2 {
+			//统计投票数
+			DPrintf("Server %d becomeLeader, Term: %d", rf.me, rf.currTerm)
+			rf.becomeLeader()
+			return true
+		} else if rf.state == Candidate {
+			DPrintf("Server %d cannot get enough votes, Term: %d, VoteCount: %d", rf.me, rf.currTerm, rf.voteCount)
+		}
 	}
 	return true
 }
@@ -278,15 +289,16 @@ func (rf *Raft) killed() bool {
 
 func (rf *Raft) ticker() {
 	for rf.killed() == false {
-
 		// Your code here (3A)
 		// Check if a leader election should be started.
 		select {
 		case <-rf.electionTimer.C:
 			rf.mu.Lock()
-			DPrintf("Server %d Election Timeout, start election", rf.me)
-			rf.startElection()
-			rf.electionTimer.Reset(getRandomElectionTimeout())
+			if rf.state != Leader {
+				DPrintf("Server %d Election Timeout, start election", rf.me)
+				rf.startElection()
+				rf.electionTimer.Reset(getRandomElectionTimeout())
+			}
 			rf.mu.Unlock()
 		case <-rf.heartbeatTimer.C:
 			rf.mu.Lock()
@@ -302,47 +314,23 @@ func (rf *Raft) ticker() {
 	}
 }
 func (rf *Raft) startElection() {
-	rf.mu.Lock()
 	rf.currTerm++
 	rf.voteFor = rf.me
 	rf.voteCount = 1
 	rf.state = Candidate
 	rf.electionTimer.Reset(getRandomElectionTimeout())
 	DPrintf("%d startElection%d", rf.me, rf.currTerm)
-	rf.mu.Unlock()
-	wg := sync.WaitGroup{}
 
 	for i := range rf.peers {
 		if i == rf.me {
 			continue
 		}
-		wg.Add(1)
 		go func(i int) {
-			defer wg.Done()
 			rf.sendRequestVote(i, &RequestVoteArgs{Term: rf.currTerm, CandidateId: rf.me}, &RequestVoteReply{})
 		}(i)
 	}
-	wg.Wait()
 
-	DPrintf("Server %d ELectionEnd, Term: %d, VoteCount: %d", rf.me, rf.currTerm, rf.voteCount)
-	//选举结束，来判断接下来的走向
-	//情况一：在选举过程中，收到更大任期的RPC请求变成了Follower，则直接返回
-	rf.mu.Lock()
-	if rf.state == Follower {
-		rf.mu.Unlock()
-		return
-	}
-	//情况二：仍然是candidate，则判断是否赢得选举
-	if rf.state == Candidate && rf.voteCount > len(rf.peers)/2 {
-		//统计投票数
-		DPrintf("Server %d becomeLeader, Term: %d", rf.me, rf.currTerm)
-		rf.mu.Unlock()
-		rf.becomeLeader()
-	} else {
-		DPrintf("Server %d cannot get enough votes, Term: %d, VoteCount: %d", rf.me, rf.currTerm, rf.voteCount)
-		rf.mu.Unlock()
-	}
-
+	//DPrintf("Server %d ELectionEnd, Term: %d, VoteCount: %d", rf.me, rf.currTerm, rf.voteCount)
 }
 func (rf *Raft) broadcastHeartbeat() {
 	for i := range rf.peers {
@@ -355,11 +343,9 @@ func (rf *Raft) broadcastHeartbeat() {
 	}
 }
 func (rf *Raft) becomeLeader() {
-	rf.mu.Lock()
 	rf.state = Leader
 	rf.voteCount = 0
 	rf.voteFor = -1
-	rf.mu.Unlock()
 	go rf.broadcastHeartbeat()
 	rf.heartbeatTimer.Reset(100 * time.Millisecond)
 }
@@ -399,5 +385,5 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	return rf
 }
 func getRandomElectionTimeout() time.Duration {
-	return time.Duration(500+rand.Int63()%250) * time.Millisecond
+	return time.Duration(250+rand.Int63()%250) * time.Millisecond
 }
